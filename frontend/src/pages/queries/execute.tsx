@@ -17,6 +17,9 @@ import {
   Alert,
   Statistic,
   Menu,
+  Modal,
+  notification,
+  Dropdown,
 } from 'antd';
 import type { TabsProps } from 'antd';
 import {
@@ -28,6 +31,8 @@ import {
   DatabaseOutlined,
   ReloadOutlined,
   PlusOutlined,
+  DownOutlined,
+  ExportOutlined,
 } from '@ant-design/icons';
 import SqlEditor from '../../components/SqlEditor';
 import ResultTable from '../../components/ResultTable';
@@ -139,6 +144,36 @@ export default function QueryExecutePage() {
     }
   };
 
+  const handleExecuteAndExport = async (format: 'csv' | 'json') => {
+    if (!selectedDatabase) {
+      message.warning('Please select a database');
+      return;
+    }
+
+    if (!sql.trim()) {
+      message.warning('Please enter a SQL query');
+      return;
+    }
+
+    try {
+      // Execute query first
+      await executeQuery(selectedDatabase, { sql });
+      // Trigger history refresh
+      setHistoryRefreshTrigger((prev) => prev + 1);
+
+      // Wait a bit for the result to be set
+      setTimeout(() => {
+        // Trigger export event
+        const exportEvent = new CustomEvent('export-data', { detail: { format } });
+        window.dispatchEvent(exportEvent);
+      }, 500);
+
+      message.success(`Query executed and exporting as ${format.toUpperCase()}...`);
+    } catch (err) {
+      console.error('Query execution failed:', err);
+    }
+  };
+
   const handleClear = () => {
     setSql('');
     reset();
@@ -163,6 +198,48 @@ export default function QueryExecutePage() {
       window.removeEventListener('keydown', handleKeyDown as any);
     };
   }, [sql, selectedDatabase]);
+
+  // Show export prompt after successful query
+  useEffect(() => {
+    if (result && !loading && !error && result.rowCount > 0) {
+      // Show notification with export options
+      const key = `export-prompt-${Date.now()}`;
+      notification.info({
+        key,
+        message: 'Query Executed Successfully',
+        description: `Retrieved ${result.rowCount} rows. Would you like to export the results?`,
+        duration: 8,
+        action: (
+          <Space>
+            <Button
+              type="primary"
+              size="small"
+              onClick={() => {
+                notification.close(key);
+                // Trigger CSV export
+                const exportEvent = new CustomEvent('export-data', { detail: { format: 'csv' } });
+                window.dispatchEvent(exportEvent);
+              }}
+            >
+              Export CSV
+            </Button>
+            <Button
+              size="small"
+              onClick={() => {
+                notification.close(key);
+                // Trigger JSON export
+                const exportEvent = new CustomEvent('export-data', { detail: { format: 'json' } });
+                window.dispatchEvent(exportEvent);
+              }}
+            >
+              Export JSON
+            </Button>
+          </Space>
+        ),
+        placement: 'topRight',
+      });
+    }
+  }, [result, loading, error]);
 
   if (loadingDatabases) {
     return (
@@ -346,6 +423,29 @@ export default function QueryExecutePage() {
                               >
                                 Execute Query
                               </Button>
+                              <Dropdown
+                                menu={{
+                                  items: [
+                                    {
+                                      key: 'export-csv',
+                                      label: 'Execute & Export CSV',
+                                      icon: <ExportOutlined />,
+                                      onClick: () => handleExecuteAndExport('csv'),
+                                    },
+                                    {
+                                      key: 'export-json',
+                                      label: 'Execute & Export JSON',
+                                      icon: <ExportOutlined />,
+                                      onClick: () => handleExecuteAndExport('json'),
+                                    },
+                                  ],
+                                }}
+                                disabled={!selectedDatabase || !sql.trim() || loading}
+                              >
+                                <Button icon={<DownOutlined />} disabled={!selectedDatabase || !sql.trim() || loading}>
+                                  Execute & Export
+                                </Button>
+                              </Dropdown>
                               <Button icon={<ClearOutlined />} onClick={handleClear}>
                                 Clear
                               </Button>
@@ -381,16 +481,7 @@ export default function QueryExecutePage() {
                   {result && !loading && (
                     <>
                       <Divider />
-                      <div style={{ marginBottom: '16px' }}>
-                        <Space>
-                          <span style={{ fontWeight: 'bold' }}>
-                            RESULTS - {result.rowCount} ROWS • {result.executionTimeMs}MS
-                          </span>
-                          <Button size="small">EXPORT CSV</Button>
-                          <Button size="small">EXPORT JSON</Button>
-                        </Space>
-                      </div>
-                      <ResultTable result={result} />
+                      <ResultTable result={result} databaseName={selectedDatabase || ''} />
                     </>
                   )}
                 </Card>

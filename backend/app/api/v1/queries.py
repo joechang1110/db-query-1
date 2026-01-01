@@ -16,6 +16,7 @@ from app.services.query import (
 from app.services.sql_validator import SQLValidationError
 from app.services.nl2sql import generate_sql_from_natural_language, NL2SQLError
 from app.services.metadata import get_database_metadata
+from app.services.export import export_service, ExportFormat
 from app.database import get_session
 
 router = APIRouter()
@@ -246,6 +247,90 @@ async def generate_sql_from_natural_language_endpoint(name: str, nl_input: Natur
                     "code": "NL2SQL_ERROR",
                     "message": e.message,
                     "details": e.details
+                }
+            }
+        )
+
+
+# Schemas for export endpoint
+class ExportInput(BaseModel):
+    """Input schema for data export."""
+    columns: list[dict]
+    rows: list[dict]
+    format: ExportFormat
+    filename: str | None = None
+
+
+class ExportResult(BaseModel):
+    """Result schema for data export."""
+    data: str
+    format: str
+    filename: str
+
+
+@router.post(
+    "/dbs/{name}/export",
+    response_model=ExportResult,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid export format"},
+        500: {"model": ErrorResponse, "description": "Export processing error"}
+    },
+    summary="Export query results",
+    description="Export query results to CSV or JSON format. "
+                "Returns the exported data as a string that can be downloaded."
+)
+async def export_query_results(name: str, export_input: ExportInput):
+    """Export query results to specified format.
+
+    Args:
+        name: Database connection name (for context)
+        export_input: Export input with columns, rows, and format
+
+    Returns:
+        Exported data and metadata
+
+    Raises:
+        HTTPException: If export fails
+    """
+    try:
+        # Generate filename if not provided
+        if not export_input.filename:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            export_input.filename = f"query_result_{timestamp}.{export_input.format.value}"
+
+        # Export data
+        exported_data = export_service.export_data(
+            columns=export_input.columns,
+            rows=export_input.rows,
+            format=export_input.format
+        )
+
+        return ExportResult(
+            data=exported_data,
+            format=export_input.format,
+            filename=export_input.filename
+        )
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": {
+                    "code": "INVALID_FORMAT",
+                    "message": str(e),
+                    "details": {"format": export_input.format}
+                }
+            }
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": {
+                    "code": "EXPORT_ERROR",
+                    "message": f"Failed to export data: {str(e)}",
+                    "details": {"error": str(e)}
                 }
             }
         )

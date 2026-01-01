@@ -9,6 +9,8 @@ import {
   QueryHistoryEntry,
   NaturalLanguageInput,
   NaturalLanguageResult,
+  ExportInput,
+  ExportResult,
 } from "../types/query";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1";
@@ -100,6 +102,18 @@ export const queryApi = {
   ): Promise<NaturalLanguageResult> => {
     const response = await apiClient.post<NaturalLanguageResult>(
       `/dbs/${databaseName}/query/natural`,
+      input
+    );
+    return response.data;
+  },
+
+  /** Export query results to specified format */
+  export: async (
+    databaseName: string,
+    input: ExportInput
+  ): Promise<ExportResult> => {
+    const response = await apiClient.post<ExportResult>(
+      `/dbs/${databaseName}/export`,
       input
     );
     return response.data;

@@ -41,3 +41,18 @@ export interface NaturalLanguageResult {
   sql: string;
   explanation: string;
 }
+
+export type ExportFormat = 'csv' | 'json';
+
+export interface ExportInput {
+  columns: QueryColumn[];
+  rows: Record<string, any>[];
+  format: ExportFormat;
+  filename?: string;
+}
+
+export interface ExportResult {
+  data: string;
+  format: string;
+  filename: string;
+}
